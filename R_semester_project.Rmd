@@ -1,0 +1,382 @@
+---
+title: "INFX 502 - Semester Project"
+output:
+  word_document: default
+  pdf_document: default
+  html_notebook: default
+  html_document:
+    df_print: paged
+---
+#### Name: Pinky Sitikhu
+
+#### ULID: C00477712 
+#### Department: Informatics (Masters')
+
+___
+Loading packages
+```{r}
+# install.packages("moments")
+library(moments)
+library(ggcorrplot)
+library(readr)
+library(ggplot2)
+library(tidyverse)
+```
+
+Loading Dataset
+Since the dataset is in csv format, "read_csv" function is used to read the dataset. Further, to briefly observe the dataset, "head" function is used to preview few rows of our dataset.
+```{r}
+data <- read_csv("realtor-data.csv", show_col_types = FALSE)
+head(data)
+```
+We can see the structure of the dataset using "str" function. 
+```{r}
+str(data)
+```
+
+In this dataset, status, street, city, and state variables are of character type. Similarly, zip_code is of numeric type. All these variables need to be converted into factor type.
+```{r}
+data$status <- as.factor(data$status)
+data$street <- as.factor(data$street)
+data$city <- as.factor(data$city)
+data$state <- as.factor(data$state)
+data$zip_code <- as.factor(data$zip_code)
+```
+
+Now, checking whether they are changed or not:
+```{r}
+str(data)
+```
+
+
+check number of rows and columns in dataset
+```{r}
+nrow(data)
+ncol(data)
+```
+There are more than 900k rows and 12 columns in the dataset.
+
+From the given structure of the dataset, we can see that the variables are either character or numeric type. But, we need to check whether there are any missing values in the dataset. 
+
+Checking missing values
+```{r}
+any(is.na(data))
+```
+This indicates that there are some missing values in the dataset. So, we further check to see which of the columns has missing values.
+# find the columns containing missing values
+```{r}
+apply(is.na(data), 2, any)
+```
+We can see that most of the columns has missing values. 
+But, let's check which column has most number of missing values
+```{r}
+colSums(is.na(data))
+```
+This shows that more than 400k observations do not have sold_date. There are certain columns which might not have significant influence/impact in the house prices. The columns like "status", "street", "full_address", "sold_date" can be removed. Before removing "status" column, let's observe the unique values and plot their distribution.
+```{r}
+unique(data$status)
+```
+Now, let's check the distribution of these two unique status.
+```{r}
+ggplot(data, aes(x=reorder(status, status, function(x)-length(x)))) +
+geom_bar(fill='#006060') +  labs(x='status')
+```
+From the plot above, we can clearly see that there are huge number of observation that are "for_sale" as compared to "ready_to_build". Since there is great data disparity, we exclude this column from our further exploration.
+
+So, removing the columns that has less or no influence in house prices. 
+```{r}
+new <- c("price", "bed", "bath", "acre_lot", "city", "state", "zip_code", "house_size")
+df <- data[new]
+head(df)
+```
+Visualize missing value count in the remaining columns
+```{r}
+missing_count_func <- function(df){
+  m<-c()
+  for (i in colnames(df)){
+    x<-sum(is.na(df[,i]))
+    # count missing value
+    m<-append(m,x)
+    # count non-missing value
+    m<-append(m,nrow(df)-x)
+  }
+  
+  a<-matrix(m, nrow = 2)
+  rownames(a)<-c("TRUE", "FALSE")
+  colnames(a)<-colnames(df)
+  return(a)
+}
+
+f=missing_count_func(df)
+f
+```
+
+```{r}
+barplot(f, main = "Missing values in each features", xlab="Frequency of occurrence", ylab="Features of the house", col=c("#33bbff","#ff9999"), horiz = TRUE, names.arg = c("price", "bed", "bath", "acre_lot", "city", "state", "zip_code", "house_size"), cex.names=0.7, las=1)
+legend("right",c("Missing values","Non-Missing values"),
+fill = c("#33bbff","#ff9999"))
+```
+
+There are various methods to handle NA or missing values, but in my use case, removing NA values and less significant columns sounds promising as there are more than 900k observations in the dataset. Also, using mean or median values or applying regression approach to fill missing values will not provide the accurate result for predicting prices.
+```{r}
+nrow(df)
+df <- na.omit(df)
+```
+
+Rechecking if any missing values remaining or not
+```{r}
+any(is.na(df))
+```
+Check number of rows remaining
+```{r}
+nrow(df)
+```
+After removing all missing values from different columns, we have more than 400k observations left. Though we removed a lot of observations based on missing values, we proceed forward with 400k observations for further analysis (in this case). 
+
+### Analysis
+
+# Univariate Analysis
+1. Exploration of categorical variables
+In the above variables, city, state, zip_code are categorical variable. First, I evaluate the distribution of the observations in terms of these variables. It would 
+```{r}
+ggplot(data=df, mapping=aes(x=state)) + geom_histogram(stat="count")+geom_bar(fill="#0073C2FF")+theme(axis.text.x=element_text(angle=90))
+```
+
+
+```{r}
+df_state <- df %>% 
+  group_by(state) %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(perc = `n` / sum(`n`)) %>% 
+  arrange(perc) %>%
+  mutate(labels = scales::percent(perc))
+ggplot(df_state, aes(x = "", y = perc, fill = state)) +
+     geom_bar(width = 1, stat = "identity") +
+     coord_polar(theta = "y", start = 180) +
+     labs(x = "", y = "", title = "Percentage of real state listings in each state \n",
+          fill = "State") + 
+     theme(plot.title = element_text(hjust = 0.5), 
+           legend.title = element_text(hjust = 0.5, face="bold", size = 10))
+#+
+#  geom_text(aes(label = paste(labels)),
+#            position = position_stack(vjust = 0.5), size=2)
+```
+Interpretation
+
+From the above chart, we can see that Massachusetts has a lot of houses listed (about 25%) which means a lot of properties from this state are for sale. It would be interesting to see in which cities and zip code there are more number of houses available for sale. Similarly, for states like Delaware, Virgin Islands, West Virginia and Wyoming, the number of houses on listing is very low, which looks negligible in above figure.
+
+So, we can divide our analysis in two parts: price difference in the region that has a lot of listing vs in the region with less listing.
+
+```{r}
+# mass_state <- df%>% filter(state == 'Massachusetts')
+# mass_state_df <- mass_state %>% 
+#   group_by(city) %>% 
+#   count()
+# mass_state_df<-mass_state_df[order(mass_state_df$n, decreasing=TRUE),]
+# mass_state_df$n <- lapply(mass_state_df$n,as.numeric)
+# head(mass_state_df)
+
+```
+
+2. Check how numerical variable is affecting the price
+
+First, I observe the overall summary of the dataset for general overview.
+```{r}
+summary(df)
+```
+# Exploring univariate numerical features
+
+```{r}
+
+skewness(x=df$bed)
+kurtosis(df$bed)
+```
+
+```{r}
+barplot(table(df$bed), main="Number of bed", xlab=paste0("bed", '\n', 'Skewness:', round(skewness(x=df$bed),2), '\t', 'kurtosis:', round(kurtosis(df$bath),2)), ylab="count")
+```
+
+```{r}
+skewness(x=df$bath)
+kurtosis(df$bath)
+```
+
+
+```{r}
+barplot(table(df$bath), main="Number of bath", xlab=paste0("bath", '\n', 'Skewness:', round(skewness(x=df$bath),2), '\t', 'kurtosis:', round(kurtosis(df$bath),2)), ylab="count")
+```
+Skewness measures the asymmetry of a distribution around its mean and kurtosis measures how heavy the tails of a distribution is around its mean. 
+From the bar plot, skewness and kurtosis values, it is clear that the bed and bath variables are right skewed distributions. Their median values are less than their means. The positive kurtosis value indicates that the tail is heavier than the normal distribution which means this data has more outliers than a normal distribution. This can be true, the maximum number of bed and bath are 99 and 198 respectively, which means the price, acre_lot and house_size need to be maximum in order to validate these numbers. 
+
+# Outlier detection in bed variable
+
+So, I extracted the potential outliers based on IQR critierion using the following function.
+```{r}
+lowerOutlierLimit <- quantile(df$bed, probs=0.25, names=FALSE)-1.5*IQR(df$bed)
+upperOutlierLimit <- quantile(df$bed, probs=0.75, names=FALSE)+1.5*IQR(df$bed)
+bed_outliers<-df$bed[df$bed<lowerOutlierLimit | df$bed>upperOutlierLimit]
+length(bed_outliers)
+unique(bed_outliers)
+```
+There are 61421 potential outliers in bed variable and the unique list of potential outliers is listed above. The potential outliers are even more clear from the box plot below. To check outliers in other variables, we can adopt the same approach.
+
+```{r}
+boxplot(df$bed,
+  ylab = "bed",
+  main = "Boxplot of bed variable to check outliers"
+)
+```
+For the boxplot of bath variables, we took the 128 samples of our dataset for better readability of image. These boxplots are useful as it shows the minimum, maximum, median, 1st quartile, 3rd quartile and outliers contained in the data. 
+```{r}
+dsample <- df[sample(nrow(df), 128), ]
+boxplot(dsample$bath,
+  ylab = "bath",
+  main = "Boxplot of bath variable to check outliers"
+)
+```
+Based on the above observation, it seems like other variables also have skewed distribution. So, we explored their density plots to check the skewness of the house_size, acre_lot, and price variable. For these exploration, we took the small random sample of 128 observation and created the plots along with their skewness and kurtosis values. All these variables are right skewed with potential outliers within them.
+
+```{r}
+dsample <- df[sample(nrow(df), 128), ]
+ggplot(data=dsample, mapping=aes(x=house_size)) +
+geom_histogram(aes(y=..density..), bins=30) + geom_density(color="red")+labs(x=paste0("house_size", '\n', 'Skewness:', round(skewness(x=df$house_size),2), '\t', 'kurtosis:', round(kurtosis(df$house_size),2)))
+```
+
+```{r}
+ggplot(data=dsample, mapping=aes(x=acre_lot)) +
+geom_histogram(aes(y=..density..), bins=30) + geom_density(color="red")+labs(x=paste0("acre_lot", '\n', 'Skewness:', round(skewness(x=df$acre_lot),2), '\t', 'kurtosis:', round(kurtosis(df$acre_lot),2)))
+```
+```{r}
+ggplot(data=dsample, mapping=aes(x=price)) +
+geom_histogram(aes(y=..density..), bins=30) + geom_density(color="red")+labs(x=paste0("price", '\n', 'Skewness:', round(skewness(x=df$price),2), '\t', 'kurtosis:', round(kurtosis(df$price),2)))
+```
+# Bivariate plots
+Now, we check what the factors affecting prices and find the relationship of other variables with price variables. Covariance, correlation and chi-square test are the common approaches/measures for bivariate data analysis. Covariance measures how two variable vary together, i.e if higher values of one variable is associated with the higher or lower values of the other variable. Positive covariance means both variable gets larger and smaller together and vice versa. Correlation measures the strength and direction of a linear relationship between two variables. A value close to 1 indicates very strong positive correlation and value close to -1 means strong negative correlation. And a value close to 0 indicates the lack of correlation between the two variables.
+
+Now we check the relationship between house_size and price variable by checking their covariance, correlation and perform chi-square test. 
+```{r}
+plot(dsample$house_size, dsample$price)
+```
+
+```{r}
+cov(df$house_size, df$price)
+cor(df$house_size, df$price)
+```
+
+```{r}
+chisq.test(df$house_size, df$price)
+```
+
+We can see that the covariance is positive and higher value, which means if the house size increases, house price increases. Similarly, the correlation value is greater than 0, but not too close to 1, which means house size and price are somewhat correlated. Since the p-value is so smaller than 0.05, we have some evidence to reject the null hypothesis and assume that there is a relation between variables house size and price, and the relation has been explained by the covariance value.
+
+# relationship between bed, bath, acre_lot and price
+The following plots are created using the data sample and show the relationship between house size and its price for different state given in the dataset. The states like Massachusetts, New Hampshire which has highest price and includes more number of houses within the states. Similarly, the price of houses increases as the house size increase, which verifies the previous results.
+```{r}
+ggplot(data=dsample, mapping=aes(x=house_size, y=price, color=state)) + 
+geom_line()
+```
+
+
+```{r}
+ggplot(data=dsample, mapping=aes(x=price, fill=state)) +
+geom_density(position="fill")
+```
+
+
+The following plot shows the distribution of data samples on the basis of its zip_code.
+```{r}
+ggplot(data=dsample) + geom_bar(mapping=aes(x=factor(1), fill=zip_code), width=1,
+    position="fill", color="black") + coord_polar(theta="y") + scale_y_continuous(
+    name="") + scale_x_discrete(name="")
+```
+
+
+
+The following plot shows the distribution of number of cities in each state.
+```{r}
+ggplot(data=dsample[1:15,], mapping=aes(x=state, fill=city)) +
+geom_bar(color="black", position="dodge")+theme(axis.text.x=element_text(angle=90))
+```
+
+
+Check the correlation of each variable with another
+```{r}
+df_new <- subset(df, select= c(price, bed, bath, acre_lot, house_size))
+cor(df_new)
+```
+
+```{r}
+# Plot
+ggcorrplot(round(cor(df_new),4),
+           type = "full",
+           lab = TRUE,
+           lab_size = 5,
+           colors = c("#008000", "#ff0001", "#ffff10"),
+           title="Correlation between variables of Housing Dataset",
+           ggtheme=theme_bw)
+```
+From this correlation plot, we can see that there is high correlation between number of beds and bath in a house. Variable acre_lot has very low correlation which is almost 0. There might be various reason of this. One of the reason might be the range of acre_lot is very low and below all the other variables. Normalization is to be done to make the scale of this variable similar to other variables. Another possible reason is there might be some non-linear relationship with this variable, and since correlation measures linear association between two given variables and cannot measure non-linear relation. 
+
+The other interesting thing is the correlation between bed and acre_lot is negative. A negative or inrverse correlation between two variables indicates that one variable increases while other decreases. Since there is not much description about what acre_lot means, as per the correlation value obtained it seems that as the number of bed increases, the acre_lot decreases. It can be interpreted as the size of empty land decreases as we create more bed for the house.
+
+Beside that other variables like bed, bath, and house_size has positive correlation with price, which means as these variables increases price also increases. 
+
+Since we saw that bath and bed are highly correlated as compared to other variables, we plotted the joint density of bed and bath using stat_density2d. stat_density2d is used to estimate the joint density of two variables.  From the heatmap created, we can see that the density is quite high in the left bottom corner, showing the correlation between bath and bed, which shows most of the houses have fairly equal number of bed and bath.
+```{r}
+ggplot(data=dsample, mapping=aes(x=bed, y=bath))  + stat_density2d(geom="tile", contour=FALSE, aes(fill=..density..)) +
+scale_fill_gradientn(colours = rainbow(6))
+```
+
+cluster analysis
+
+x = house_size, y= price
+```{r}
+d <- c("house_size", "price")
+mydata <- df[d]
+ggplot(data=mydata, mapping=aes(x=house_size, y=price)) + geom_point()
+```
+
+
+
+
+
+```{r}
+set.seed(1001)
+fit <- kmeans(x=mydata, centers=5)
+fit
+mydata$cluster <- factor(fit$cluster)
+```
+
+```{r}
+head(mydata)
+```
+
+```{r}
+ggplot() + geom_point(data=mydata, mapping=aes(x=house_size, y=price, color=cluster)) + geom_point(data=data.frame(fit$centers, centroid=as.factor(1:nrow(fit$centers))),
+    mapping=aes(x=house_size, y=price, fill=centroid), shape=23, color="black")
+```
+
+```{r}
+set.seed(1001)
+dsample <- mydata[sample(nrow(mydata), 128), ]
+fit <- kmeans(x=dsample, centers=5)
+dsample$cluster <- factor(fit$cluster)
+ggplot() + geom_point(data=dsample, mapping=aes(x=house_size, y=price, color=cluster)) + geom_point(data=data.frame(fit$centers, centroid=as.factor(1:nrow(fit$centers))),
+    mapping=aes(x=house_size, y=price, fill=centroid), shape=23, color="black")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
